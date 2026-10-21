@@ -14,6 +14,8 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 
 @Component
 public class StoreIngestionScheduler {
@@ -105,9 +107,18 @@ public class StoreIngestionScheduler {
 
                 String nombre = archivo.getFileName().toString();
 
-                if (nombre.toLowerCase(Locale.ROOT).endsWith(".csv")) {
+                String extension = nombre.toLowerCase(Locale.ROOT);
+
+                if (extension.endsWith(".csv")) {
+
                     procesarCsv(archivo);
+
+                } else if (extension.endsWith(".jpg")) {
+
+                    copiarFirma(archivo);
+
                 } else {
+
                     System.out.println("Archivo no vacío: " + nombre);
                 }
             }
@@ -162,5 +173,35 @@ public class StoreIngestionScheduler {
 
         System.out.println("Total de ventas de "
                 + archivo.getFileName() + ": " + total);
+    }
+
+    private void copiarFirma(Path archivo) throws IOException {
+
+        // Ruta donde guardaremos la firma
+        Path destino = OUTPUT.resolve("processed/signatures")
+                .resolve(archivo.getFileName());
+
+        // Abrir el archivo de entrada y el de salida
+        try (
+                BufferedInputStream entrada =
+                        new BufferedInputStream(Files.newInputStream(archivo));
+
+                BufferedOutputStream salida =
+                        new BufferedOutputStream(Files.newOutputStream(destino))
+        ) {
+
+            // Buffer de 4 KB
+            byte[] buffer = new byte[4096];
+
+            int bytesLeidos;
+
+            // Leer y copiar el archivo por bloques
+            while ((bytesLeidos = entrada.read(buffer)) != -1) {
+
+                salida.write(buffer, 0, bytesLeidos);
+            }
+        }
+
+        System.out.println("Firma copiada: " + archivo.getFileName());
     }
 }
