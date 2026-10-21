@@ -16,6 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.InputStream;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipEntry;
 
 @Component
 public class StoreIngestionScheduler {
@@ -117,6 +120,10 @@ public class StoreIngestionScheduler {
 
                     copiarFirma(archivo);
 
+                } else if (extension.endsWith(".zip")) {
+
+                    procesarZip(archivo);
+
                 } else {
 
                     System.out.println("Archivo no vacío: " + nombre);
@@ -133,46 +140,58 @@ public class StoreIngestionScheduler {
 
     private void procesarCsv(Path archivo) throws IOException {
 
+        try (InputStream entrada = Files.newInputStream(archivo)) {
+            procesarCsv(entrada, archivo.getFileName().toString());
+        }
+    }
+
+    private void procesarCsv(InputStream entrada, String nombre)
+            throws IOException {
+
         BigDecimal total = BigDecimal.ZERO;
 
-        try (BufferedReader reader = new BufferedReader(
+        BufferedReader reader = new BufferedReader(
                 new InputStreamReader(
-                        Files.newInputStream(archivo),
-                        StandardCharsets.UTF_8))) {
+                        entrada,
+                        StandardCharsets.UTF_8
+                )
+        );
 
-            // Saltar la cabecera
-            reader.readLine();
+        String cabecera = reader.readLine();
 
-            String linea;
+        if (cabecera == null) {
+            throw new IOException("CSV vacío: " + nombre);
+        }
 
-            while ((linea = reader.readLine()) != null) {
+        String linea;
 
-                if (linea.isBlank()) {
-                    continue;
-                }
+        while ((linea = reader.readLine()) != null) {
 
-                String[] campos = linea.split(",", -1);
+            if (linea.isBlank()) {
+                continue;
+            }
 
-                if (campos.length != 5) {
-                    throw new IOException(
-                            "Fila CSV incorrecta: " + linea);
-                }
+            String[] campos = linea.split(",", -1);
 
-                System.out.println("Tienda: " + campos[1]);
+            if (campos.length != 5) {
+                throw new IOException("Fila CSV incorrecta: " + linea);
+            }
 
-                try {
-                    BigDecimal venta = new BigDecimal(campos[2]);
-                    total = total.add(venta);
+            System.out.println("Tienda: " + campos[1]);
 
-                } catch (NumberFormatException e) {
-                    throw new IOException(
-                            "Importe incorrecto: " + campos[2], e);
-                }
+            try {
+                BigDecimal venta = new BigDecimal(campos[2]);
+                total = total.add(venta);
+
+            } catch (NumberFormatException e) {
+                throw new IOException(
+                        "Importe incorrecto: " + campos[2], e
+                );
             }
         }
 
         System.out.println("Total de ventas de "
-                + archivo.getFileName() + ": " + total);
+                + nombre + ": " + total);
     }
 
     private void copiarFirma(Path archivo) throws IOException {
@@ -203,5 +222,60 @@ public class StoreIngestionScheduler {
         }
 
         System.out.println("Firma copiada: " + archivo.getFileName());
+    }
+
+    private void procesarZip(Path archivo) throws IOException {
+
+        try (ZipInputStream zip = new ZipInputStream(
+                Files.newInputStream(archivo))) {
+
+            ZipEntry entrada;
+
+            while ((entrada = zip.getNextEntry()) != null) {
+
+                if (!entrada.isDirectory()) {
+
+                    String nombre = entrada.getName();
+
+                    if (nombre.equals("daily_sales_usa.csv")) {
+
+                        procesarCsv(zip, nombre);
+
+                    } else if (nombre.equals("signature_usa.jpg")) {
+
+                        copiarFirmaDesdeZip(zip, nombre);
+
+                    } else {
+
+                        System.out.println(
+                                "Entrada ZIP ignorada: " + nombre
+                        );
+                    }
+                }
+
+                zip.closeEntry();
+            }
+        }
+    }
+
+    private void copiarFirmaDesdeZip(ZipInputStream zip, String nombre)
+            throws IOException {
+
+        Path destino = OUTPUT.resolve("processed/signatures")
+                .resolve(nombre);
+
+        try (BufferedOutputStream salida =
+                     new BufferedOutputStream(
+                             Files.newOutputStream(destino))) {
+
+            byte[] buffer = new byte[4096];
+            int bytesLeidos;
+
+            while ((bytesLeidos = zip.read(buffer)) != -1) {
+                salida.write(buffer, 0, bytesLeidos);
+            }
+        }
+
+        System.out.println("Firma copiada desde ZIP: " + nombre);
     }
 }
