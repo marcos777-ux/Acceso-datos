@@ -1,10 +1,10 @@
-package com.makro.add.demo;
+package com.makro.aad.demo;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class DemoApplicationTests {
+class AadApplicationTests {
 
 	@Test
 	void contextLoads() {
